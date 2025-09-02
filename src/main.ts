@@ -27,7 +27,7 @@ class RobotArmSimulation {
       this.robotArm = new RobotArm(this.scene.getScene())
 
       // 加载机械臂模型
-      await this.robotArm.loadModel('/models/arm.glb')
+      await this.robotArm.loadModel('arm.glb')
 
       // 创建控制面板
       this.controlPanel = ControlPanel.getInstance()

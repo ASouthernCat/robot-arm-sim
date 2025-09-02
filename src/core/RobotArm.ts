@@ -35,7 +35,7 @@ export class RobotArm {
   constructor(scene: THREE.Scene) {
     this.scene = scene
     this.loader = new GLTFLoader()
-    this.loader.setDRACOLoader(dracoLoader)
+    this.loader.setDRACOLoader(dracoLoader).setPath(import.meta.env.BASE_URL + 'models/')
   }
 
   update(_deltaTime?: number): void {}
