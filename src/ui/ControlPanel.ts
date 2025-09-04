@@ -170,20 +170,11 @@ export class ControlPanel {
   }
 
   private resetToDefault(): void {
-    const jointConfigs = this.robotArm!.getJointConfigs()
-    jointConfigs.forEach(config => {
-      gsap.killTweensOf(config, 'currentAngle')
-      const duration = (Math.abs(config.currentAngle - config.defaultAngle) / 360) * 2 // 保持匀速运动
-      gsap.to(config, {
-        currentAngle: config.defaultAngle,
-        duration,
-        ease: 'none',
-        onUpdate: () => {
-          this.robotArm!.setJointAngle(config.name, config.currentAngle)
-          const control = this.jointControls.get(config.name)
-          control && control.refresh()
-        },
-      })
+    this.robotArm!.resetToDefault({
+      onUpdate: config => {
+        const control = this.jointControls.get(config.name)
+        control && control.refresh()
+      },
     })
   }
 

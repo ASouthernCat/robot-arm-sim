@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import gsap from 'gsap'
 
 type JointAxis = 'X' | 'Y' | 'Z'
 
@@ -136,6 +137,22 @@ export class RobotArm {
       if (helper) {
         helper.visible = visible !== undefined ? visible : !helper.visible
       }
+    })
+  }
+
+  resetToDefault(options: { onUpdate?: (config: JointConfig) => void }): void {
+    this.jointConfigs.forEach(config => {
+      gsap.killTweensOf(config, 'currentAngle')
+      const duration = (Math.abs(config.currentAngle - config.defaultAngle) / 360) * 2 // 保持匀速运动
+      gsap.to(config, {
+        currentAngle: config.defaultAngle,
+        duration,
+        ease: 'none',
+        onUpdate: () => {
+          this.setJointAngle(config.name, config.currentAngle)
+          options.onUpdate?.(config)
+        },
+      })
     })
   }
 }
