@@ -4,7 +4,7 @@ import { Scene } from '../core/Scene'
 import gsap from 'gsap'
 import { SceneConfig } from '@/config/Scene'
 import * as THREE from 'three'
-import type { BindingApi } from '@tweakpane/core'
+import type { BindingApi, ButtonApi } from '@tweakpane/core'
 
 export class ControlPanel {
   private pane: Pane
@@ -12,6 +12,28 @@ export class ControlPanel {
   private scene: Scene | null = null
   private jointControls: Map<string, BindingApi> = new Map()
   private static instance: ControlPanel | null = null
+  private progressBinding: BindingApi | null = null
+  private stateBinding: BindingApi | null = null
+  private playButton: ButtonApi | null = null
+  private pauseButton: ButtonApi | null = null
+  private stopButton: ButtonApi | null = null
+  private animationControls: {
+    actionProgress: number
+    currentFrameId: number
+    isPlaying: boolean
+    isPaused: boolean
+    selectedAction: string
+    gripperState: boolean
+    isDragActionProgress: boolean
+  } = {
+    actionProgress: 0,
+    currentFrameId: 0,
+    isPlaying: false,
+    isPaused: false,
+    selectedAction: 'pick_and_place.json',
+    gripperState: false,
+    isDragActionProgress: false,
+  }
 
   private constructor() {
     this.pane = new Pane({
@@ -32,6 +54,10 @@ export class ControlPanel {
       ControlPanel.instance.pane.dispose()
       ControlPanel.instance = null
     }
+  }
+
+  getPane(): Pane {
+    return this.pane
   }
 
   // 绑定 Scene
@@ -148,13 +174,22 @@ export class ControlPanel {
       })
 
       jointControl.on('change', ev => {
+        const angles: {name: string, deg: number, rad: number}[] = []
+        jointConfigs.forEach(config => {
+          angles.push({name: config.name, deg: config.currentAngle, rad: THREE.MathUtils.degToRad(config.currentAngle)})
+        })
+        console.log('current angles: ', angles)
+        if(this.animationControls.isPlaying || this.animationControls.isDragActionProgress){
+          return
+        }
+        console.log('jointControl.on change', config.name, ev.value)
         this.robotArm!.setJointAngle(config.name, ev.value)
       })
 
       this.jointControls.set(config.name, jointControl)
     })
 
-    //TODO: 添加预设动作
+    // 预设动作
     const presetFolder = this.pane.addFolder({
       title: '预设动作',
       expanded: true,
@@ -162,23 +197,250 @@ export class ControlPanel {
 
     presetFolder
       .addButton({
-        title: '重置位置',
+        title: 'reset',
       })
       .on('click', () => {
         this.resetToDefault()
       })
+
+    const actionFolder = presetFolder.addFolder({ title: '动作序列' })
+
+    // 动作选择
+    actionFolder
+      .addBinding(this.animationControls, 'selectedAction', {
+        view: 'list',
+        label: '预设',
+        options: [
+          { text: '抓取&放置', value: 'pick_and_place.json' },
+          { text: '示例', value: 'demo_action.json' },
+        ],
+      })
+      .on('change', () => {
+        // 当选择新的动作序列时，加载该序列
+        this.loadSelectedAction()
+      })
+
+    // 执行控制按钮
+    const controlsFolder = actionFolder.addFolder({ title: '执行控制', expanded: true })
+
+    // 执行按钮
+    this.playButton = controlsFolder
+      .addButton({
+        title: '执行',
+      })
+      .on('click', () => {
+        this.playJSONAction()
+      })
+
+    this.pauseButton = controlsFolder
+      .addButton({
+        title: '暂停/恢复',
+      })
+      .on('click', () => {
+        this.togglePause()
+      })
+
+    this.stopButton = controlsFolder
+      .addButton({
+        title: '停止',
+      })
+      .on('click', () => {
+        this.stopAnimationAndReset()
+      })
+
+    // 初始化按钮显示状态
+    this.updateButtonStates()
+
+    // 进度控制
+    this.progressBinding = controlsFolder.addBinding(this.animationControls, 'actionProgress', {
+      min: 0,
+      max: 1,
+      step: 0.01,
+      label: '动作进度',
+    })
+
+    this.progressBinding.on('change', ev => {
+      if(this.animationControls.isPlaying){
+        return
+      }
+      if (this.robotArm) {
+        this.animationControls.isDragActionProgress = true
+        this.robotArm.setAnimationProgress(ev.value as number)
+        this.animationControls.currentFrameId = this.robotArm.getAnimationState().currentKeyFrameIndex
+        this.updateJointControls()
+        this.animationControls.isDragActionProgress = false
+      }
+    })
+
+    // 状态显示
+    const statusFolder = actionFolder.addFolder({ title: '状态信息', expanded: true })
+
+    this.stateBinding = statusFolder.addBinding(this.animationControls, 'currentFrameId', {
+      label: '当前帧ID',
+      readonly: true,
+      format: v => v.toFixed(0),
+    })
+
+    statusFolder.addBinding(this.animationControls, 'gripperState', {
+      label: '机械爪状态',
+      readonly: true,
+    })
+
+    // 初始化时加载默认的动作序列
+    this.loadSelectedAction()
   }
 
   private resetToDefault(): void {
     this.robotArm!.resetToDefault({
       onUpdate: config => {
+        this.animationControls.isPlaying = true
         const control = this.jointControls.get(config.name)
         control && control.refresh()
       },
+      onComplete: ()=>{
+        this.animationControls.isPlaying = false
+      }
     })
   }
 
-  getPane(): Pane {
-    return this.pane
+  private updateJointControls(): void {
+    this.jointControls.forEach(control => {
+      control.refresh()
+    })
+  }
+
+  // 更新按钮显示状态
+  private updateButtonStates(): void {
+    if (this.playButton && this.pauseButton && this.stopButton) {
+      if (this.animationControls.isPlaying) {
+        // 播放中：隐藏执行按钮，显示暂停和停止按钮
+        this.playButton.hidden = true
+        this.pauseButton.hidden = false
+        this.stopButton.hidden = false
+      } else {
+        // 非播放状态：显示执行按钮，隐藏暂停和停止按钮
+        this.playButton.hidden = false
+        this.pauseButton.hidden = true
+        this.stopButton.hidden = true
+      }
+    }
+  }
+
+  // 加载选中的动作序列
+  private async loadSelectedAction(): Promise<void> {
+    if (!this.robotArm) return
+
+    try {
+      // 停止当前动画
+      this.stopAnimation()
+
+      // 加载动作序列
+      await this.robotArm.loadActionSequence(this.animationControls.selectedAction)
+
+      // 重置进度
+      this.animationControls.actionProgress = 0
+      this.animationControls.currentFrameId = 0
+      this.progressBinding && this.progressBinding.refresh()
+      this.stateBinding && this.stateBinding.refresh()
+
+      console.log(`已加载动作序列: ${this.animationControls.selectedAction}`)
+    } catch (error) {
+      console.error('加载动作序列失败:', error)
+    }
+  }
+
+  private async playJSONAction(): Promise<void> {
+    if (!this.robotArm) return
+
+    try {
+      this.animationControls.isPlaying = true
+      this.animationControls.isPaused = false
+      this.updateButtonStates()
+
+      await this.robotArm.playActionSequence(this.animationControls.selectedAction, {
+        onUpdate: config => {
+          const control = this.jointControls.get(config.name)
+          control && control.refresh()
+        },
+        onProgressUpdate: progress => {
+          this.animationControls.actionProgress = progress
+          this.progressBinding && this.progressBinding.refresh()
+        },
+        onStateChange: (frameId, frame) => {
+          this.animationControls.currentFrameId = frameId
+          this.stateBinding && this.stateBinding.refresh()
+          console.log(`切换到关键帧 ${frameId}`, frame)
+        },
+        onGripperChange: isGripping => {
+          this.animationControls.gripperState = isGripping
+          // TODO: 添加机械爪视觉反馈
+          console.log(`机械爪状态: ${isGripping ? '闭合' : '张开'}`)
+        },
+        onComplete: () => {
+          this.animationControls.isPlaying = false
+          this.animationControls.isPaused = false
+          this.updateButtonStates()
+        },
+      })
+    } catch (error) {
+      console.error('播放动作失败:', error)
+      this.animationControls.isPlaying = false
+      this.animationControls.isPaused = false
+      this.updateButtonStates()
+    }
+  }
+
+  private togglePause(): void {
+    if (!this.robotArm) return
+
+    const animState = this.robotArm.getAnimationState()
+
+    if (animState.isPlaying && !animState.isPaused) {
+      this.robotArm.pauseAnimation()
+      this.animationControls.isPaused = true
+      this.animationControls.isPlaying = false
+    } else if (animState.isPaused) {
+      this.robotArm.resumeAnimation()
+      this.animationControls.isPaused = false
+      this.animationControls.isPlaying = true
+    }
+  }
+
+  private stopAnimation(): void {
+    if (!this.robotArm) return
+
+    this.robotArm.stopAnimation()
+
+  }
+
+  // 停止动画并将所有关节复位到0度
+  private stopAnimationAndReset(): void {
+    if (!this.robotArm) return
+
+    // 先停止动画
+    this.stopAnimation()
+
+    // 将所有关节平滑复位到0度
+    this.robotArm.reset0({
+      onUpdate: config => {
+        this.animationControls.isPlaying = true
+        this.animationControls.isPaused = false
+        const control = this.jointControls.get(config.name)
+        control && control.refresh()
+      },
+      onComplete: () => {
+        // 刷新动作进度
+        this.animationControls.actionProgress = 0
+        this.progressBinding && this.progressBinding.refresh()
+        // 刷新动作状态
+        this.animationControls.currentFrameId = 0
+        this.animationControls.gripperState = false
+        this.stateBinding && this.stateBinding.refresh()
+        // 重置控制按钮状态
+        this.animationControls.isPlaying = false
+        this.animationControls.isPaused = false
+        this.updateButtonStates()
+      },
+    })
   }
 }
