@@ -15,3 +15,14 @@ body {
   width: 100vw;
   height: 100vh;
 }
+
+.tp-dfwv {
+  min-width: max-content;
+  max-width: 300px;
+}
+
+.tp-dfwv .tp-rotv.tp-rotv-expanded .tp-rotv_c, .tp-fldv.tp-fldv-expanded>.tp-fldv_c {
+  overflow-y: auto;
+  height: auto;
+  max-height: 80vh;
+}
