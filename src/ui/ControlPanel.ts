@@ -14,6 +14,7 @@ export class ControlPanel {
   private static instance: ControlPanel | null = null
   private progressBinding: BindingApi | null = null
   private stateBinding: BindingApi | null = null
+  private resetButton: ButtonApi | null = null
   private playButton: ButtonApi | null = null
   private pauseButton: ButtonApi | null = null
   private stopButton: ButtonApi | null = null
@@ -184,24 +185,23 @@ export class ControlPanel {
       this.jointControls.set(config.name, jointControl)
     })
 
+    // reset
+    this.resetButton = jointFolder
+    .addButton({
+      title: 'idle pose',
+    })
+    .on('click', () => {
+      this.resetToDefault()
+    })
+
     // 预设动作
     const presetFolder = this.pane.addFolder({
       title: '预设动作',
       expanded: true,
     })
 
-    presetFolder
-      .addButton({
-        title: 'reset',
-      })
-      .on('click', () => {
-        this.resetToDefault()
-      })
-
-    const actionFolder = presetFolder.addFolder({ title: '动作序列' })
-
     // 动作选择
-    actionFolder
+    presetFolder
       .addBinding(this.animationControls, 'selectedAction', {
         view: 'list',
         label: '预设',
@@ -216,7 +216,7 @@ export class ControlPanel {
       })
 
     // 执行控制按钮
-    const controlsFolder = actionFolder.addFolder({ title: '执行控制', expanded: true })
+    const controlsFolder = presetFolder.addFolder({ title: '执行控制', expanded: true })
 
     // 执行按钮
     this.playButton = controlsFolder
@@ -268,7 +268,7 @@ export class ControlPanel {
     })
 
     // 状态显示
-    const statusFolder = actionFolder.addFolder({ title: '状态信息', expanded: true })
+    const statusFolder = presetFolder.addFolder({ title: '状态信息', expanded: true })
 
     this.stateBinding = statusFolder.addBinding(this.animationControls, 'currentFrameId', {
       label: '当前帧ID',
@@ -306,17 +306,19 @@ export class ControlPanel {
 
   // 更新按钮显示状态
   private updateButtonStates(): void {
-    if (this.playButton && this.pauseButton && this.stopButton) {
+    if (this.playButton && this.pauseButton && this.stopButton && this.resetButton) {
       if (this.animationControls.isPlaying) {
         // 播放中：隐藏执行按钮，显示暂停和停止按钮
         this.playButton.hidden = true
         this.pauseButton.hidden = false
         this.stopButton.hidden = false
+        this.resetButton.disabled = true
       } else {
         // 非播放状态：显示执行按钮，隐藏暂停和停止按钮
         this.playButton.hidden = false
         this.pauseButton.hidden = true
         this.stopButton.hidden = true
+        this.resetButton.disabled = false
       }
     }
   }
@@ -327,16 +329,10 @@ export class ControlPanel {
 
     try {
       // 停止当前动画
-      this.stopAnimation()
+      this.stopAnimationAndReset()
 
       // 加载动作序列
       await this.robotArm.loadActionSequence(this.animationControls.selectedAction)
-
-      // 重置进度
-      this.animationControls.actionProgress = 0
-      this.animationControls.currentFrameId = 0
-      this.progressBinding && this.progressBinding.refresh()
-      this.stateBinding && this.stateBinding.refresh()
 
       console.log(`已加载动作序列: ${this.animationControls.selectedAction}`)
     } catch (error) {
