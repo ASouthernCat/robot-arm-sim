@@ -174,11 +174,6 @@ export class ControlPanel {
       })
 
       jointControl.on('change', ev => {
-        const angles: {name: string, deg: number, rad: number}[] = []
-        jointConfigs.forEach(config => {
-          angles.push({name: config.name, deg: config.currentAngle, rad: THREE.MathUtils.degToRad(config.currentAngle)})
-        })
-        console.log('current angles: ', angles)
         if(this.animationControls.isPlaying || this.animationControls.isDragActionProgress){
           return
         }

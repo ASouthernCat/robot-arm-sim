@@ -201,6 +201,12 @@ export class RobotArm {
         joint.rotation.z = rad
         break
     }
+
+    const angles: {name: string, deg: number, rad: number}[] = []
+    this.jointConfigs.forEach(config => {
+      angles.push({name: config.name, deg: config.currentAngle, rad: THREE.MathUtils.degToRad(config.currentAngle)})
+    })
+    console.log('current joints angles: ', angles)
   }
 
   getJointAngle(jointName: string): number {
