@@ -175,7 +175,7 @@ export class ControlPanel {
       })
 
       jointControl.on('change', ev => {
-        if(this.animationControls.isPlaying || this.animationControls.isDragActionProgress){
+        if (this.animationControls.isPlaying || this.animationControls.isDragActionProgress) {
           return
         }
         console.log('jointControl.on change', config.name, ev.value)
@@ -187,12 +187,12 @@ export class ControlPanel {
 
     // reset
     this.resetButton = jointFolder
-    .addButton({
-      title: 'idle pose',
-    })
-    .on('click', () => {
-      this.resetToDefault()
-    })
+      .addButton({
+        title: 'idle pose',
+      })
+      .on('click', () => {
+        this.resetToDefault()
+      })
 
     // 预设动作
     const presetFolder = this.pane.addFolder({
@@ -255,13 +255,14 @@ export class ControlPanel {
     })
 
     this.progressBinding.on('change', ev => {
-      if(this.animationControls.isPlaying){
+      if (this.animationControls.isPlaying) {
         return
       }
       if (this.robotArm) {
         this.animationControls.isDragActionProgress = true
         this.robotArm.setAnimationProgress(ev.value as number)
-        this.animationControls.currentFrameId = this.robotArm.getAnimationState().currentKeyFrameIndex
+        this.animationControls.currentFrameId =
+          this.robotArm.getAnimationState().currentKeyFrameIndex
         this.updateJointControls()
         this.animationControls.isDragActionProgress = false
       }
@@ -292,9 +293,9 @@ export class ControlPanel {
         const control = this.jointControls.get(config.name)
         control && control.refresh()
       },
-      onComplete: ()=>{
+      onComplete: () => {
         this.animationControls.isPlaying = false
-      }
+      },
     })
   }
 
@@ -401,7 +402,6 @@ export class ControlPanel {
     if (!this.robotArm) return
 
     this.robotArm.stopAnimation()
-
   }
 
   // 停止动画并将所有关节复位到0度

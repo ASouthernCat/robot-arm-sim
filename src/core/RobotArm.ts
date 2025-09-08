@@ -202,9 +202,13 @@ export class RobotArm {
         break
     }
 
-    const angles: {name: string, deg: number, rad: number}[] = []
+    const angles: { name: string; deg: number; rad: number }[] = []
     this.jointConfigs.forEach(config => {
-      angles.push({name: config.name, deg: config.currentAngle, rad: THREE.MathUtils.degToRad(config.currentAngle)})
+      angles.push({
+        name: config.name,
+        deg: config.currentAngle,
+        rad: THREE.MathUtils.degToRad(config.currentAngle),
+      })
     })
     console.log('current joints angles: ', angles)
   }
@@ -231,7 +235,7 @@ export class RobotArm {
     })
   }
 
-  reset0(options: { onUpdate?: (config: JointConfig) => void, onComplete?: () => void }): void {
+  reset0(options: { onUpdate?: (config: JointConfig) => void; onComplete?: () => void }): void {
     this.jointConfigs.forEach(config => {
       gsap.killTweensOf(config, 'currentAngle')
       const duration = (1 - Math.abs(config.currentAngle - 0) / 360) * 1 // 保持匀速运动
@@ -250,7 +254,10 @@ export class RobotArm {
     })
   }
 
-  resetToDefault(options: { onUpdate?: (config: JointConfig) => void, onComplete?: () => void }): void {
+  resetToDefault(options: {
+    onUpdate?: (config: JointConfig) => void
+    onComplete?: () => void
+  }): void {
     this.jointConfigs.forEach(config => {
       gsap.killTweensOf(config, 'currentAngle')
       const duration = (Math.abs(config.currentAngle - config.defaultAngle) / 360) * 3 // 保持匀速运动
