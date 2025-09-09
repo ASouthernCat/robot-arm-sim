@@ -2,7 +2,16 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import gsap from 'gsap'
 import { log } from '../ui/Log'
+import { type LogMessage } from '../ui/Log'
+import { throttle } from '../utils/throttle'
 type JointAxis = 'X' | 'Y' | 'Z'
+
+const throttledLog = throttle(
+  (type: LogMessage['type'] = 'debug', angles: { name: string; deg: number; rad: number }[]) => {
+    log[type](`joints angles: ${angles.map(angle => `${angle.name}: ${angle.deg}°`)}`)
+  },
+  { interval: 20, leading: true, trailing: true }
+)
 
 export interface JointConfig {
   name: string
@@ -211,7 +220,7 @@ export class RobotArm {
       })
     })
     console.log('current joints angles: ', angles)
-    log.debug(`joints angles: ${angles.map(angle => `${angle.name}: ${angle.deg}°`)}`)
+    throttledLog('debug', angles)
   }
 
   getJointAngle(jointName: string): number {
