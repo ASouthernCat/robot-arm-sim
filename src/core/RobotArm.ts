@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import gsap from 'gsap'
-
+import { log } from '../ui/Log'
 type JointAxis = 'X' | 'Y' | 'Z'
 
 export interface JointConfig {
@@ -211,6 +211,7 @@ export class RobotArm {
       })
     })
     console.log('current joints angles: ', angles)
+    log.debug(`joints angles: ${angles.map(angle => `${angle.name}: ${angle.deg}°`)}`)
   }
 
   getJointAngle(jointName: string): number {

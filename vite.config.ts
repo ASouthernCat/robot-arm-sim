@@ -7,6 +7,13 @@ const env = loadEnv(mode || 'development', process.cwd())
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [],
+  css: {
+    preprocessorOptions: {
+      scss: {
+        charset: false,
+      },
+    },
+  },
   server: {
     port: 5500,
     host: '0.0.0.0',
