@@ -193,8 +193,6 @@ class Log {
     if (this.messages.length > this.maxMessages) {
       this.messages.shift()
     }
-
-    // TODO: 自动滚动到最新消息
   }
 
   public info(content: string, data?: any): void {
