@@ -7,8 +7,8 @@ import { throttle } from '../utils/throttle'
 type JointAxis = 'X' | 'Y' | 'Z'
 
 const throttledLog = throttle(
-  (type: LogMessage['type'] = 'debug', angles: { name: string; deg: number; rad: number }[]) => {
-    log[type](`joints angles: ${angles.map(angle => `${angle.name}: ${angle.deg}°`)}`)
+  (type: LogMessage['type'] = 'debug', logMsg: string) => {
+    log[type](`${logMsg}`)
   },
   { interval: 20, leading: true, trailing: true }
 )
@@ -62,12 +62,21 @@ const jointAxisMap: Record<string, JointAxis> = {
   wrist1: 'Z',
 }
 
+const gripperAxisMap: Record<string, JointAxis> = {
+  gripper1: 'Y',
+  gripper2: 'Y',
+}
+
 export class RobotArm {
   private scene: THREE.Scene
   private model: THREE.Group | null = null
   private joints: Map<string, THREE.Object3D> = new Map()
   private jointConfigs: JointConfig[] = []
   private jointNames: string[] = Object.keys(jointAxisMap)
+  private grippers: Map<string, THREE.Object3D> = new Map()
+  private gripperConfigs: JointConfig[] = []
+  private gripperNames: string[] = Object.keys(gripperAxisMap)
+  private allComponentsConfigs: JointConfig[] = []
   private loader: GLTFLoader
   private animationState: AnimationState = {
     isPlaying: false,
@@ -77,6 +86,8 @@ export class RobotArm {
     timeline: null,
     currentSequence: null,
   }
+  private gripperAnimationTimeline: gsap.core.Timeline | null = null
+  private gripperOpenness: number = 0
 
   constructor(scene: THREE.Scene) {
     this.scene = scene
@@ -179,8 +190,28 @@ export class RobotArm {
           currentAngle,
         })
       }
+
+      if (this.gripperNames.includes(child.name)) {
+        const helper = new THREE.AxesHelper(0.1)
+        child.add(helper)
+        this.grippers.set(child.name, child)
+        const axis = gripperAxisMap[child.name]
+        const currentAngle = THREE.MathUtils.radToDeg(
+          child.rotation[axis.toLocaleLowerCase() as keyof THREE.Euler] as number
+        )
+
+        this.gripperConfigs.push({
+          name: child.name,
+          axis,
+          minAngle: child.name === 'gripper1' ? -23 : -30,
+          maxAngle: child.name === 'gripper1' ? 30 : 23,
+          defaultAngle: currentAngle,
+          currentAngle,
+        })
+      }
     })
 
+    this.allComponentsConfigs = [...this.jointConfigs, ...this.gripperConfigs]
     console.log(`找到 ${this.joints.size} 个关节`)
   }
 
@@ -220,7 +251,72 @@ export class RobotArm {
       })
     })
     console.log('current joints angles: ', angles)
-    throttledLog('debug', angles)
+    throttledLog('debug', `joints: ${angles.map(angle => `${angle.name}: ${angle.deg}°`)}`)
+  }
+
+  setGripperAngle(gripperName: string, angle: number): void {
+    const gripper = this.grippers.get(gripperName)
+    const config = this.gripperConfigs.find(c => c.name === gripperName)
+    if (!gripper || !config) {
+      console.warn(`机械爪 ${gripperName} 不存在`)
+      return
+    }
+    const clampedAngle = Math.max(config.minAngle, Math.min(config.maxAngle, angle))
+    config.currentAngle = clampedAngle
+
+    const rad = THREE.MathUtils.degToRad(clampedAngle)
+    switch (config.axis) {
+      case 'X':
+        gripper.rotation.x = rad
+        break
+      case 'Y':
+        gripper.rotation.y = rad
+        break
+      case 'Z':
+        gripper.rotation.z = rad
+        break
+    }
+
+    const angles: { name: string; deg: number; rad: number }[] = []
+    this.gripperConfigs.forEach(config => {
+      angles.push({
+        name: config.name,
+        deg: config.currentAngle,
+        rad: THREE.MathUtils.degToRad(config.currentAngle),
+      })
+    })
+    console.log('current grippers angles: ', angles)
+    throttledLog('debug', `grippers: ${angles.map(angle => `${angle.name}: ${angle.deg}°`)}`)
+  }
+
+  /**
+   *
+   * @param openness 机械爪开合程度，0为完全闭合，1为完全张开
+   */
+  setGripperOpenness(openness: number): void {
+    // 限制openness范围在0-1之间
+    const clampedOpenness = Math.max(0, Math.min(1, openness))
+
+    const gripper1Config = this.gripperConfigs.find(c => c.name === 'gripper1')
+    const gripper2Config = this.gripperConfigs.find(c => c.name === 'gripper2')
+    if (!gripper1Config || !gripper2Config) {
+      console.warn('机械爪不存在')
+      return
+    }
+    // 为两个机械爪设置对称角度
+    const gripper1Angle =
+      gripper1Config.minAngle +
+      clampedOpenness * (gripper1Config.maxAngle - gripper1Config.minAngle)
+
+    const gripper2Angle =
+      gripper2Config.maxAngle +
+      clampedOpenness * (gripper2Config.minAngle - gripper2Config.maxAngle)
+
+    // 设置两个机械爪的角度
+    this.setGripperAngle('gripper1', gripper1Angle)
+    this.setGripperAngle('gripper2', gripper2Angle)
+
+    throttledLog('debug', `gripper openness: ${clampedOpenness}`)
   }
 
   getJointAngle(jointName: string): number {
@@ -228,8 +324,17 @@ export class RobotArm {
     return config?.currentAngle || 0
   }
 
+  getGripperAngle(gripperName: string): number {
+    const config = this.gripperConfigs.find(c => c.name === gripperName)
+    return config?.currentAngle || 0
+  }
+
   getJointConfigs(): JointConfig[] {
     return [...this.jointConfigs]
+  }
+
+  getGripperConfigs(): JointConfig[] {
+    return [...this.gripperConfigs]
   }
 
   getModel(): THREE.Group | null {
@@ -243,10 +348,16 @@ export class RobotArm {
         helper.visible = visible !== undefined ? visible : !helper.visible
       }
     })
+    this.grippers.forEach(gripper => {
+      const helper = gripper.children.find(child => child instanceof THREE.AxesHelper)
+      if (helper) {
+        helper.visible = visible !== undefined ? visible : !helper.visible
+      }
+    })
   }
 
   reset0(options: { onUpdate?: (config: JointConfig) => void; onComplete?: () => void }): void {
-    this.jointConfigs.forEach(config => {
+    this.allComponentsConfigs.forEach(config => {
       gsap.killTweensOf(config, 'currentAngle')
       const duration = (1 - Math.abs(config.currentAngle - 0) / 360) * 1 // 保持匀速运动
       gsap.to(config, {
@@ -254,7 +365,9 @@ export class RobotArm {
         duration,
         ease: 'none',
         onUpdate: () => {
-          this.setJointAngle(config.name, config.currentAngle)
+          config.name.includes('gripper')
+            ? this.setGripperAngle(config.name, config.currentAngle)
+            : this.setJointAngle(config.name, config.currentAngle)
           options.onUpdate?.(config)
         },
         onComplete: () => {
@@ -268,7 +381,7 @@ export class RobotArm {
     onUpdate?: (config: JointConfig) => void
     onComplete?: () => void
   }): void {
-    this.jointConfigs.forEach(config => {
+    this.allComponentsConfigs.forEach(config => {
       gsap.killTweensOf(config, 'currentAngle')
       const duration = (Math.abs(config.currentAngle - config.defaultAngle) / 360) * 3 // 保持匀速运动
       gsap.to(config, {
@@ -276,13 +389,31 @@ export class RobotArm {
         duration,
         ease: 'none',
         onUpdate: () => {
-          this.setJointAngle(config.name, config.currentAngle)
+          config.name.includes('gripper')
+            ? this.setGripperAngle(config.name, config.currentAngle)
+            : this.setJointAngle(config.name, config.currentAngle)
           options.onUpdate?.(config)
         },
         onComplete: () => {
           options.onComplete?.()
         },
       })
+    })
+  }
+
+  // 动画驱动机械爪开合
+  animateGripperOpenness(openness: number, duration: number = 0.5): void {
+    if (this.gripperAnimationTimeline) {
+      this.gripperAnimationTimeline.kill()
+    }
+    this.gripperAnimationTimeline = gsap.timeline()
+    this.gripperAnimationTimeline.to(this, {
+      gripperOpenness: openness,
+      duration: duration,
+      ease: 'none',
+      onUpdate: () => {
+        this.setGripperOpenness(this.gripperOpenness)
+      },
     })
   }
 
@@ -380,10 +511,12 @@ export class RobotArm {
           }
         })
 
-        // TODO: 处理IO状态变化（机械爪）
+        // 处理IO状态变化（机械爪）
         if (frame.io?.digital_output_0 !== undefined) {
+          const openness = frame.io!.digital_output_0 ? 0 : 1
           this.animationState.timeline!.call(
             () => {
+              this.animateGripperOpenness(openness)
               options.onGripperChange?.(frame.io!.digital_output_0!)
             },
             [],
@@ -495,6 +628,12 @@ export class RobotArm {
           }
         }
       })
+
+      // 设置机械爪状态
+      if (targetFrame.io?.digital_output_0 !== undefined) {
+        const openness = targetFrame.io!.digital_output_0 ? 0 : 1
+        this.animateGripperOpenness(openness)
+      }
 
       this.animationState.currentProgress = progress
       this.animationState.currentKeyFrameIndex = targetFrameIndex

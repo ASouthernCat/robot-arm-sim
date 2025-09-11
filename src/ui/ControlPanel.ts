@@ -165,6 +165,7 @@ export class ControlPanel {
     })
 
     const jointConfigs = this.robotArm.getJointConfigs()
+    const gripperConfigs = this.robotArm.getGripperConfigs()
 
     jointConfigs.forEach(config => {
       const jointControl = jointFolder.addBinding(config, 'currentAngle', {
@@ -184,6 +185,42 @@ export class ControlPanel {
 
       this.jointControls.set(config.name, jointControl)
     })
+
+    jointFolder.addBlade({ view: 'separator' })
+
+    gripperConfigs.forEach(config => {
+      const gripperControl = jointFolder.addBinding(config, 'currentAngle', {
+        min: config.minAngle,
+        max: config.maxAngle,
+        step: 1,
+        label: config.name,
+      })
+      gripperControl.on('change', ev => {
+        if (this.animationControls.isPlaying || this.animationControls.isDragActionProgress) {
+          return
+        }
+        console.log('gripperControl.on change', config.name, ev.value)
+        this.robotArm!.setGripperAngle(config.name, ev.value)
+      })
+
+      this.jointControls.set(config.name, gripperControl)
+    })
+    jointFolder
+      .addBinding({ openness: 0 }, 'openness', {
+        min: 0,
+        max: 1,
+        step: 0.01,
+      })
+      .on('change', ev => {
+        if (this.animationControls.isPlaying) {
+          return
+        }
+        this.animationControls.isDragActionProgress = true
+        console.log('opennessControl.on change', ev.value)
+        this.robotArm!.setGripperOpenness(ev.value)
+        this.updateJointControls()
+        this.animationControls.isDragActionProgress = false
+      })
 
     // reset
     this.resetButton = jointFolder
