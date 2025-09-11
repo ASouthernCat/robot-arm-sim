@@ -107,7 +107,7 @@ export class ControlPanel {
   }
 
   private setFrontView(): void {
-    this.moveCamera(new THREE.Vector3(0, 1.5, 5), new THREE.Vector3(0, 1.5, 0))
+    this.moveCamera(new THREE.Vector3(0, 1.5, 5), SceneConfig.controls.defaultTarget)
   }
 
   private setMainView(): void {
@@ -116,11 +116,11 @@ export class ControlPanel {
 
   private setTopView(): void {
     const epsilon = 0.0001 // 极小偏移量，避免 phi=0 奇点
-    this.moveCamera(new THREE.Vector3(0, 10, epsilon), new THREE.Vector3(0, 0, 0))
+    this.moveCamera(new THREE.Vector3(0, 10, epsilon), SceneConfig.controls.defaultTarget)
   }
 
   private setSideView(): void {
-    this.moveCamera(new THREE.Vector3(5, 1.5, 0), new THREE.Vector3(0, 1.5, 0))
+    this.moveCamera(new THREE.Vector3(5, 1.5, 0), SceneConfig.controls.defaultTarget)
   }
 
   private moveCamera(position: THREE.Vector3, target: THREE.Vector3): void {
