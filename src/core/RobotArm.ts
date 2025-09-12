@@ -88,6 +88,7 @@ export class RobotArm {
   }
   private gripperAnimationTimeline: gsap.core.Timeline | null = null
   private gripperOpenness: number = 0
+  private constantAngularVelocity: number = 360 / 4.8
 
   constructor(scene: THREE.Scene) {
     this.scene = scene
@@ -380,7 +381,7 @@ export class RobotArm {
   reset0(options: { onUpdate?: (config: JointConfig) => void; onComplete?: () => void }): void {
     this.allComponentsConfigs.forEach(config => {
       gsap.killTweensOf(config, 'currentAngle')
-      const duration = (1 - Math.abs(config.currentAngle - 0) / 360) * 2 // 保持匀速运动
+      const duration = Math.abs(config.currentAngle - 0) / this.constantAngularVelocity // 保持匀速运动
       gsap.to(config, {
         currentAngle: 0,
         duration,
@@ -404,7 +405,8 @@ export class RobotArm {
   }): void {
     this.allComponentsConfigs.forEach(config => {
       gsap.killTweensOf(config, 'currentAngle')
-      const duration = (1 - Math.abs(config.currentAngle - config.defaultAngle) / 360) * 2 // 保持匀速运动
+      const duration =
+        Math.abs(config.currentAngle - config.defaultAngle) / this.constantAngularVelocity // 保持匀速运动,
       gsap.to(config, {
         currentAngle: config.defaultAngle,
         duration,
