@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import gsap from 'gsap'
-import { log } from '../ui/Log'
+import Log, { log } from '../ui/Log'
 import { type LogMessage } from '../ui/Log'
 import { throttle } from '../utils/throttle'
 type JointAxis = 'X' | 'Y' | 'Z'
@@ -100,7 +100,7 @@ export class RobotArm {
   // 加载JSON动作序列
   async loadActionSequence(jsonPath: string) {
     try {
-      const response = await fetch(import.meta.env.BASE_URL + 'actions/' + jsonPath)
+      const response = await fetch(jsonPath)
       if (!response.ok) {
         throw new Error(`Failed to load action sequence: ${response.statusText}`)
       }
@@ -113,6 +113,27 @@ export class RobotArm {
       this.animationState.currentSequence = sequence
     } catch (error) {
       console.error('加载动作序列失败:', error)
+      Log.error(`加载动作序列失败: ${error}`)
+      this.animationState.currentSequence = null
+      throw error
+    }
+  }
+
+  // 加载JSON动作序列文件
+  async loadActionSequenceFile(file: File) {
+    try {
+      // 读取文件内容
+      const fileContent = await file.text()
+      const sequence: JSONActionSequence = JSON.parse(fileContent)
+
+      // 验证数据格式
+      await this.validateActionSequence(sequence)
+
+      console.log(`加载动作序列文件: ${sequence.meta.description}`)
+      this.animationState.currentSequence = sequence
+    } catch (error) {
+      console.error('加载动作序列文件失败:', error)
+      Log.error(`加载动作序列文件失败: ${error}`)
       this.animationState.currentSequence = null
       throw error
     }
@@ -359,7 +380,7 @@ export class RobotArm {
   reset0(options: { onUpdate?: (config: JointConfig) => void; onComplete?: () => void }): void {
     this.allComponentsConfigs.forEach(config => {
       gsap.killTweensOf(config, 'currentAngle')
-      const duration = (1 - Math.abs(config.currentAngle - 0) / 360) * 1 // 保持匀速运动
+      const duration = (1 - Math.abs(config.currentAngle - 0) / 360) * 2 // 保持匀速运动
       gsap.to(config, {
         currentAngle: 0,
         duration,
@@ -383,7 +404,7 @@ export class RobotArm {
   }): void {
     this.allComponentsConfigs.forEach(config => {
       gsap.killTweensOf(config, 'currentAngle')
-      const duration = (Math.abs(config.currentAngle - config.defaultAngle) / 360) * 3 // 保持匀速运动
+      const duration = (1 - Math.abs(config.currentAngle - config.defaultAngle) / 360) * 2 // 保持匀速运动
       gsap.to(config, {
         currentAngle: config.defaultAngle,
         duration,
@@ -439,10 +460,7 @@ export class RobotArm {
 
     try {
       // 如果序列未加载，先加载
-      if (
-        !this.animationState.currentSequence ||
-        this.animationState.currentSequence.meta.description !== jsonPath
-      ) {
+      if (!this.animationState.currentSequence) {
         await this.loadActionSequence(jsonPath)
       }
 

@@ -5,6 +5,9 @@ import gsap from 'gsap'
 import { SceneConfig } from '@/config/Scene'
 import * as THREE from 'three'
 import type { BindingApi, ButtonApi } from '@tweakpane/core'
+import Log from './Log'
+
+const ACTION_BASE_PATH = import.meta.env.BASE_URL + 'actions/'
 
 export class ControlPanel {
   private pane: Pane
@@ -18,6 +21,10 @@ export class ControlPanel {
   private playButton: ButtonApi | null = null
   private pauseButton: ButtonApi | null = null
   private stopButton: ButtonApi | null = null
+  private fileInput: HTMLInputElement | null = null
+  private presetActionBinding: BindingApi | null = null
+  private uploadButton: ButtonApi | null = null
+  private resetUploadButton: ButtonApi | null = null
   private animationControls: {
     actionProgress: number
     currentFrameId: number
@@ -40,6 +47,7 @@ export class ControlPanel {
     this.pane = new Pane({
       title: 'Robot Arm Simulator',
     })
+    this.createFileInput()
   }
 
   public static getInstance(): ControlPanel {
@@ -53,6 +61,12 @@ export class ControlPanel {
   public static destroyInstance(): void {
     if (ControlPanel.instance) {
       ControlPanel.instance.pane.dispose()
+
+      if (ControlPanel.instance.fileInput) {
+        document.body.removeChild(ControlPanel.instance.fileInput)
+        ControlPanel.instance.fileInput = null
+      }
+
       ControlPanel.instance = null
     }
   }
@@ -238,7 +252,7 @@ export class ControlPanel {
     })
 
     // 动作选择
-    presetFolder
+    this.presetActionBinding = presetFolder
       .addBinding(this.animationControls, 'selectedAction', {
         view: 'list',
         label: '预设',
@@ -319,6 +333,25 @@ export class ControlPanel {
       readonly: true,
     })
 
+    // 上传文件
+    presetFolder.addBlade({ view: 'separator' })
+    this.uploadButton = presetFolder
+      .addButton({
+        title: '⬆ 上传文件',
+      })
+      .on('click', () => {
+        Log.info('上传文件...')
+        this.openFileSelector()
+      })
+    this.resetUploadButton = presetFolder
+      .addButton({
+        title: '重置上传',
+      })
+      .on('click', () => {
+        this.resetUpload()
+      })
+    this.resetUploadButton.hidden = true
+
     // 初始化时加载默认的动作序列
     this.loadSelectedAction()
   }
@@ -370,7 +403,9 @@ export class ControlPanel {
       this.stopAnimationAndReset()
 
       // 加载动作序列
-      await this.robotArm.loadActionSequence(this.animationControls.selectedAction)
+      await this.robotArm.loadActionSequence(
+        ACTION_BASE_PATH + this.animationControls.selectedAction
+      )
 
       console.log(`已加载动作序列: ${this.animationControls.selectedAction}`)
     } catch (error) {
@@ -386,31 +421,33 @@ export class ControlPanel {
       this.animationControls.isPaused = false
       this.updateButtonStates()
 
-      await this.robotArm.playActionSequence(this.animationControls.selectedAction, {
-        onUpdate: config => {
-          const control = this.jointControls.get(config.name)
-          control && control.refresh()
-        },
-        onProgressUpdate: progress => {
-          this.animationControls.actionProgress = progress
-          this.progressBinding && this.progressBinding.refresh()
-        },
-        onStateChange: (frameId, frame) => {
-          this.animationControls.currentFrameId = frameId
-          this.stateBinding && this.stateBinding.refresh()
-          console.log(`切换到关键帧 ${frameId}`, frame)
-        },
-        onGripperChange: isGripping => {
-          this.animationControls.gripperState = isGripping
-          // TODO: 添加机械爪视觉反馈
-          console.log(`机械爪状态: ${isGripping ? '闭合' : '张开'}`)
-        },
-        onComplete: () => {
-          this.animationControls.isPlaying = false
-          this.animationControls.isPaused = false
-          this.updateButtonStates()
-        },
-      })
+      await this.robotArm.playActionSequence(
+        ACTION_BASE_PATH + this.animationControls.selectedAction,
+        {
+          onUpdate: config => {
+            const control = this.jointControls.get(config.name)
+            control && control.refresh()
+          },
+          onProgressUpdate: progress => {
+            this.animationControls.actionProgress = progress
+            this.progressBinding && this.progressBinding.refresh()
+          },
+          onStateChange: (frameId, frame) => {
+            this.animationControls.currentFrameId = frameId
+            this.stateBinding && this.stateBinding.refresh()
+            console.log(`切换到关键帧 ${frameId}`, frame)
+          },
+          onGripperChange: isGripping => {
+            this.animationControls.gripperState = isGripping
+            console.log(`机械爪状态: ${isGripping ? '闭合' : '张开'}`)
+          },
+          onComplete: () => {
+            this.animationControls.isPlaying = false
+            this.animationControls.isPaused = false
+            this.updateButtonStates()
+          },
+        }
+      )
     } catch (error) {
       console.error('播放动作失败:', error)
       this.animationControls.isPlaying = false
@@ -457,18 +494,80 @@ export class ControlPanel {
         control && control.refresh()
       },
       onComplete: () => {
-        // 刷新动作进度
-        this.animationControls.actionProgress = 0
-        this.progressBinding && this.progressBinding.refresh()
-        // 刷新动作状态
-        this.animationControls.currentFrameId = 0
-        this.animationControls.gripperState = false
-        this.stateBinding && this.stateBinding.refresh()
+        this.resetActionProgressAndFrameState()
         // 重置控制按钮状态
         this.animationControls.isPlaying = false
         this.animationControls.isPaused = false
         this.updateButtonStates()
       },
     })
+  }
+
+  // 重置动作进度及帧状态
+  private resetActionProgressAndFrameState(): void {
+    this.animationControls.actionProgress = 0
+    this.progressBinding && this.progressBinding.refresh()
+    this.animationControls.currentFrameId = 0
+    this.animationControls.gripperState = false
+    this.stateBinding && this.stateBinding.refresh()
+  }
+
+  // 创建隐藏的文件输入元素
+  private createFileInput(): void {
+    this.fileInput = document.createElement('input')
+    this.fileInput.type = 'file'
+    this.fileInput.accept = '.json'
+    this.fileInput.style.display = 'none'
+    this.fileInput.addEventListener('change', this.handleFileSelect.bind(this))
+    document.body.appendChild(this.fileInput)
+  }
+
+  // 处理文件选择
+  private async handleFileSelect(event: Event): Promise<void> {
+    const target = event.target as HTMLInputElement
+    const file = target.files?.[0]
+
+    if (!file) {
+      Log.info('未选择任何文件')
+      return
+    }
+
+    if (!file.name.endsWith('.json')) {
+      Log.error('请选择JSON格式的文件！')
+      return
+    }
+
+    Log.info(`已选择文件: ${file.name}`)
+
+    // 处理上传的文件
+    try {
+      await this.robotArm!.loadActionSequenceFile(file)
+      this.presetActionBinding!.disabled = true
+      this.resetUploadButton!.hidden = false
+      this.uploadButton!.hidden = true
+      Log.success('文件解析成功，可执行动作...')
+    } catch (error) {
+      console.error('文件解析失败:', error)
+      Log.warning('文件解析失败，请检查！重新上传文件...')
+    }
+
+    // 清空输入值，以便下次可以选择相同文件
+    target.value = ''
+  }
+
+  // 重置上传
+  private async resetUpload(): Promise<void> {
+    this.presetActionBinding!.disabled = false
+    this.resetUploadButton!.hidden = true
+    this.uploadButton!.hidden = false
+    await this.loadSelectedAction()
+    Log.info('已重置上传文件，可重新上传文件...')
+  }
+
+  // 打开文件选择器
+  private openFileSelector(): void {
+    if (this.fileInput) {
+      this.fileInput.click()
+    }
   }
 }
