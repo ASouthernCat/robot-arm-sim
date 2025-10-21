@@ -4,6 +4,7 @@ import gsap from 'gsap'
 import Log, { log } from '../ui/Log'
 import { type LogMessage } from '../ui/Log'
 import { throttle } from '../utils/throttle'
+import { TrajectoryVisualizer, type TrajectoryPoint } from './TrajectoryVisualizer'
 type JointAxis = 'X' | 'Y' | 'Z'
 
 const throttledLog = throttle(
@@ -89,11 +90,15 @@ export class RobotArm {
   private gripperAnimationTimeline: gsap.core.Timeline | null = null
   private gripperOpenness: number = 0
   private constantAngularVelocity: number = 360 / 4.8
+  private trajectoryVisualizer: TrajectoryVisualizer | null = null
+  private trajectoryRecordingInterval: number | null = null
+  private currentTrajectoryFrameId: number = 0
 
   constructor(scene: THREE.Scene) {
     this.scene = scene
     this.loader = new GLTFLoader()
     this.loader.setPath(import.meta.env.BASE_URL + 'models/')
+    this.trajectoryVisualizer = new TrajectoryVisualizer(scene)
   }
 
   update(_deltaTime?: number): void {}
@@ -471,6 +476,11 @@ export class RobotArm {
       // 停止之前的动画
       this.stopAnimation()
 
+      // 开始新的轨迹记录
+      const sequenceId = `${sequence.meta.description}_${sequence.meta.created}`
+      this.trajectoryVisualizer?.startNewTrajectory(sequenceId)
+      this.currentTrajectoryFrameId = 0
+
       // 创建新的时间线
       this.animationState.timeline = gsap.timeline({
         onUpdate: () => {
@@ -483,6 +493,8 @@ export class RobotArm {
           this.animationState.isPaused = false
           this.animationState.currentProgress = 1
           options.onProgressUpdate?.(1)
+          this.stopTrajectoryRecording()
+          this.trajectoryVisualizer?.finishTrajectory()
           options.onComplete?.()
         },
       })
@@ -560,8 +572,12 @@ export class RobotArm {
 
       this.animationState.isPlaying = true
       this.animationState.isPaused = false
+
+      // 开始轨迹记录
+      this.startTrajectoryRecording()
     } catch (error) {
       console.error('播放动作序列失败:', error)
+      this.stopTrajectoryRecording()
       throw error
     }
   }
@@ -571,6 +587,7 @@ export class RobotArm {
     if (this.animationState.timeline && this.animationState.isPlaying) {
       this.animationState.timeline.pause()
       this.animationState.isPaused = true
+      this.pauseTrajectoryRecording()
     }
   }
 
@@ -579,6 +596,7 @@ export class RobotArm {
     if (this.animationState.timeline && this.animationState.isPaused) {
       this.animationState.timeline.play()
       this.animationState.isPaused = false
+      this.resumeTrajectoryRecording()
     }
   }
 
@@ -592,6 +610,7 @@ export class RobotArm {
     this.animationState.isPaused = false
     this.animationState.currentProgress = 0
     this.animationState.currentKeyFrameIndex = 0
+    this.stopTrajectoryRecording()
   }
 
   // 设置动画进度
@@ -673,5 +692,58 @@ export class RobotArm {
   // 清除当前加载的动作序列
   clearCurrentSequence(): void {
     this.animationState.currentSequence = null
+  }
+
+  // 开始轨迹记录
+  private startTrajectoryRecording(): void {
+    // 清除之前的记录定时器
+    this.stopTrajectoryRecording()
+
+    // 每隔一定时间记录一次末端执行器位置
+    const recordInterval = 20 // 20ms 记录一次
+    this.trajectoryRecordingInterval = window.setInterval(() => {
+      this.recordTrajectoryPoint()
+    }, recordInterval)
+  }
+
+  // 停止轨迹记录
+  private stopTrajectoryRecording(): void {
+    if (this.trajectoryRecordingInterval !== null) {
+      window.clearInterval(this.trajectoryRecordingInterval)
+      this.trajectoryRecordingInterval = null
+    }
+  }
+
+  // 暂停轨迹记录
+  private pauseTrajectoryRecording(): void {
+    this.stopTrajectoryRecording()
+  }
+
+  // 恢复轨迹记录
+  private resumeTrajectoryRecording(): void {
+    this.startTrajectoryRecording()
+  }
+
+  // 记录轨迹点
+  private recordTrajectoryPoint(): void {
+    const position = TrajectoryVisualizer.getEndEffectorPosition(this.model)
+    if (position) {
+      const point: TrajectoryPoint = {
+        position: position.clone(),
+        time: Date.now(),
+        frameId: this.currentTrajectoryFrameId++,
+      }
+      this.trajectoryVisualizer?.addTrajectoryPoint(point)
+    }
+  }
+
+  // 获取轨迹可视化器
+  getTrajectoryVisualizer(): TrajectoryVisualizer | null {
+    return this.trajectoryVisualizer
+  }
+
+  // 清除轨迹
+  clearTrajectory(): void {
+    this.trajectoryVisualizer?.clear()
   }
 }

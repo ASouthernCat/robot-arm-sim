@@ -354,6 +354,9 @@ export class ControlPanel {
 
     // 初始化时加载默认的动作序列
     this.loadSelectedAction()
+
+    // 添加轨迹可视化控制
+    this.addTrajectoryControls()
   }
 
   private resetToDefault(): void {
@@ -485,6 +488,9 @@ export class ControlPanel {
     // 先停止动画
     this.stopAnimation()
 
+    // 清除轨迹
+    this.robotArm.clearTrajectory()
+
     // 将所有关节平滑复位到0度
     this.robotArm.reset0({
       onUpdate: config => {
@@ -569,5 +575,74 @@ export class ControlPanel {
     if (this.fileInput) {
       this.fileInput.click()
     }
+  }
+
+  // 添加轨迹可视化控制
+  private addTrajectoryControls(): void {
+    if (!this.robotArm) return
+
+    const trajectoryVisualizer = this.robotArm.getTrajectoryVisualizer()
+    if (!trajectoryVisualizer) return
+
+    trajectoryVisualizer.setVisible(false)
+
+    const trajectoryFolder = this.pane.addFolder({
+      title: '轨迹可视化',
+      expanded: true,
+    })
+
+    const config = trajectoryVisualizer.getConfig()
+
+    // 轨迹可见性控制
+    trajectoryFolder
+      .addBinding(config, 'visible', {
+        label: '显示轨迹',
+      })
+      .on('change', ev => {
+        trajectoryVisualizer.setVisible(ev.value)
+      })
+
+    // 清除轨迹按钮
+    trajectoryFolder
+      .addButton({
+        title: '清除轨迹',
+      })
+      .on('click', () => {
+        this.robotArm?.clearTrajectory()
+        Log.info('轨迹已清除')
+      })
+
+    // 颜色配置
+    const colorFolder = trajectoryFolder.addFolder({
+      title: '颜色配置',
+      expanded: false,
+    })
+
+    colorFolder
+      .addBinding(config, 'lineColor', {
+        label: '轨迹线颜色',
+        view: 'color',
+      })
+      .on('change', ev => {
+        trajectoryVisualizer.setConfig({ lineColor: ev.value })
+      })
+
+    colorFolder
+      .addBinding(config, 'startPointColor', {
+        label: '起始点颜色',
+        view: 'color',
+      })
+      .on('change', ev => {
+        trajectoryVisualizer.setConfig({ startPointColor: ev.value })
+      })
+
+    colorFolder
+      .addBinding(config, 'endPointColor', {
+        label: '结束点颜色',
+        view: 'color',
+      })
+      .on('change', ev => {
+        trajectoryVisualizer.setConfig({ endPointColor: ev.value })
+      })
   }
 }
