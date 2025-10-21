@@ -33,6 +33,9 @@ class RobotArmSimulation {
 
       // 加载机械臂模型
       await this.robotArm.loadModel('arm.glb')
+      setTimeout(() => {
+        document.querySelector('.loader-container')?.classList.add('loaded')
+      }, 500)
       log.success('机械臂模型加载完成')
 
       // 创建控制面板
