@@ -66,6 +66,9 @@ export class Scene {
     // 设置光照
     this.setupLighting()
 
+    // 设置阴影
+    this.setupShadow()
+
     // 设置网格
     this.setupGrid()
 
@@ -90,6 +93,8 @@ export class Scene {
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8)
     directionalLight.position.set(10, 10, 5)
     directionalLight.castShadow = true
+    directionalLight.shadow.camera.near = 1
+    directionalLight.shadow.camera.far = 50
     directionalLight.shadow.mapSize.width = 1024
     directionalLight.shadow.mapSize.height = 1024
     this.scene.add(directionalLight)
@@ -98,6 +103,19 @@ export class Scene {
     const pointLight = new THREE.PointLight(0xffffff, 0.5)
     pointLight.position.set(-10, 10, -10)
     this.scene.add(pointLight)
+  }
+
+  private setupShadow(): void {
+    const plane = new THREE.Mesh(
+      new THREE.PlaneGeometry(10, 10),
+      new THREE.ShadowMaterial({
+        opacity: 0.2,
+      })
+    )
+    plane.rotation.x = -Math.PI / 2
+    plane.position.y = 0.001
+    plane.receiveShadow = true
+    this.scene.add(plane)
   }
 
   private setupGrid(): void {

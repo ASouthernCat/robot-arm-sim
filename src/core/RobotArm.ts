@@ -197,6 +197,10 @@ export class RobotArm {
 
     // 遍历模型查找关节
     this.model.traverse(child => {
+      if (child instanceof THREE.Mesh) {
+        child.receiveShadow = false
+        child.castShadow = true
+      }
       if (this.jointNames.includes(child.name)) {
         const helper = new THREE.AxesHelper(0.1)
         child.add(helper)
