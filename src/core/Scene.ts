@@ -110,6 +110,7 @@ export class Scene {
     const axesHelper = new THREE.AxesHelper(5)
     axesHelper.position.set(0, 0.001, 0)
     grid.add(axesHelper)
+    grid.visible = false
     this.panel.addBinding(grid, 'visible', { label: 'axesHelper' })
   }
 
