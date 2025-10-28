@@ -5,6 +5,7 @@ import Log, { log } from '../ui/Log'
 import { type LogMessage } from '../ui/Log'
 import { throttle } from '../utils/throttle'
 import { TrajectoryVisualizer, type TrajectoryPoint } from './TrajectoryVisualizer'
+import { WebSocketManager, type WebSocketConfig } from './WebSocketManager'
 type JointAxis = 'X' | 'Y' | 'Z'
 
 const throttledLog = throttle(
@@ -93,6 +94,7 @@ export class RobotArm {
   private trajectoryVisualizer: TrajectoryVisualizer | null = null
   private trajectoryRecordingInterval: number | null = null
   private currentTrajectoryFrameId: number = 0
+  private webSocketManager: WebSocketManager | null = null
 
   constructor(scene: THREE.Scene) {
     this.scene = scene
@@ -281,8 +283,130 @@ export class RobotArm {
         rad: THREE.MathUtils.degToRad(config.currentAngle),
       })
     })
-    console.log('current joints angles: ', angles)
+    // console.log('current joints angles: ', angles)
     throttledLog('debug', `joints: ${angles.map(angle => `${angle.name}: ${angle.deg}°`)}`)
+  }
+
+  /**
+   * 使用补间动画设置关节角度
+   * @param jointName 关节名称
+   * @param targetAngle 目标角度（度）
+   * @param duration 动画持续时间（秒），默认0.5秒
+   * @param callback 动画回调函数
+   */
+  animateJointAngle(
+    jointName: string,
+    targetAngle: number,
+    duration: number = 0.5,
+    callback?: {
+      onStart?: () => void
+      onUpdate?: () => void
+      onComplete?: () => void
+      onInterrupt?: () => void
+    }
+  ) {
+    const joint = this.joints.get(jointName)
+    const config = this.jointConfigs.find(c => c.name === jointName)
+
+    if (!joint || !config) {
+      const error = `关节 ${jointName} 不存在`
+      console.warn(error)
+      log.warning(error)
+      throw new Error(error)
+    }
+
+    // 限制角度范围
+    const clampedAngle = Math.max(config.minAngle, Math.min(config.maxAngle, targetAngle))
+
+    if (Math.abs(config.currentAngle - clampedAngle) < 0.01) {
+      // 如果目标角度与当前角度几乎相同，直接返回
+      log.debug(`关节 ${jointName} 已在目标位置: ${clampedAngle}°`)
+      return
+    }
+
+    log.info(
+      `开始关节动画 - ${jointName}: ${config.currentAngle}° → ${clampedAngle}°, 持续时间: ${duration}s`
+    )
+
+    if (this.animationState.timeline) {
+      this.animationState.timeline.kill()
+      this.animationState.timeline = null
+    }
+    this.animationState.timeline = gsap.timeline()
+
+    this.animationState.timeline.to(config, {
+      currentAngle: clampedAngle,
+      duration,
+      ease: 'none',
+      onUpdate: () => {
+        // 在动画过程中更新关节角度
+        this.setJointAngle(jointName, config.currentAngle)
+        callback?.onUpdate?.()
+      },
+      onComplete: () => {
+        log.success(`关节动画完成 - ${jointName}: ${clampedAngle}°`)
+        callback?.onComplete?.()
+      },
+      onStart: () => {
+        callback?.onStart?.()
+      },
+      onInterrupt: () => {
+        callback?.onInterrupt?.()
+      },
+    })
+  }
+
+  /**
+   * 同时动画多个关节
+   * @param jointAngles 关节角度映射 {关节名: 目标角度}
+   * @param duration 动画持续时间（秒），默认0.5秒
+   * @param callback 动画回调函数
+   */
+  animateMultipleJoints(
+    jointAngles: Record<string, number>,
+    duration: number = 0.5,
+    callback?: {
+      onStart?: () => void
+      onUpdate?: () => void
+      onComplete?: () => void
+      onInterrupt?: () => void
+    }
+  ) {
+    if (this.animationState.timeline) {
+      this.animationState.timeline.kill()
+      this.animationState.timeline = null
+    }
+    this.animationState.timeline = gsap.timeline({
+      onStart: () => {
+        callback?.onStart?.()
+      },
+      onComplete: () => {
+        callback?.onComplete?.()
+      },
+      onUpdate: () => {
+        callback?.onUpdate?.()
+      },
+      onInterrupt: () => {
+        callback?.onInterrupt?.()
+      },
+    })
+    Object.entries(jointAngles).forEach(([jointName, targetAngle]) => {
+      const jointConfig = this.jointConfigs.find(c => c.name === jointName)
+      if (jointConfig) {
+        this.animationState.timeline!.to(
+          jointConfig,
+          {
+            currentAngle: targetAngle,
+            duration: duration,
+            ease: 'none',
+            onUpdate: () => {
+              this.setJointAngle(jointName, jointConfig.currentAngle)
+            },
+          },
+          0
+        )
+      }
+    })
   }
 
   setGripperAngle(gripperName: string, angle: number): void {
@@ -317,7 +441,7 @@ export class RobotArm {
       })
     })
     console.log('current grippers angles: ', angles)
-    throttledLog('debug', `grippers: ${angles.map(angle => `${angle.name}: ${angle.deg}°`)}`)
+    // throttledLog('debug', `grippers: ${angles.map(angle => `${angle.name}: ${angle.deg}°`)}`)
   }
 
   /**
@@ -387,7 +511,10 @@ export class RobotArm {
     })
   }
 
-  reset0(options: { onUpdate?: (config: JointConfig) => void; onComplete?: () => void }): void {
+  reset0(options?: { onUpdate?: (config: JointConfig) => void; onComplete?: () => void }): void {
+    // 停止所有现有动画
+    this.stopAllJointAnimations()
+
     this.allComponentsConfigs.forEach(config => {
       gsap.killTweensOf(config, 'currentAngle')
       const duration = Math.abs(config.currentAngle - 0) / this.constantAngularVelocity // 保持匀速运动
@@ -399,19 +526,22 @@ export class RobotArm {
           config.name.includes('gripper')
             ? this.setGripperAngle(config.name, config.currentAngle)
             : this.setJointAngle(config.name, config.currentAngle)
-          options.onUpdate?.(config)
+          options?.onUpdate?.(config)
         },
         onComplete: () => {
-          options.onComplete?.()
+          options?.onComplete?.()
         },
       })
     })
   }
 
-  resetToDefault(options: {
+  resetToDefault(options?: {
     onUpdate?: (config: JointConfig) => void
     onComplete?: () => void
   }): void {
+    // 停止所有现有动画
+    this.stopAllJointAnimations()
+
     this.allComponentsConfigs.forEach(config => {
       gsap.killTweensOf(config, 'currentAngle')
       const duration =
@@ -424,10 +554,10 @@ export class RobotArm {
           config.name.includes('gripper')
             ? this.setGripperAngle(config.name, config.currentAngle)
             : this.setJointAngle(config.name, config.currentAngle)
-          options.onUpdate?.(config)
+          options?.onUpdate?.(config)
         },
         onComplete: () => {
-          options.onComplete?.()
+          options?.onComplete?.()
         },
       })
     })
@@ -522,18 +652,18 @@ export class RobotArm {
         }
 
         // 为每个关节创建动画
-        frame.joints.forEach((jointAngle, jointIndex) => {
+        frame.joints.forEach((angleRad, jointIndex) => {
           if (jointIndex < this.jointNames.length) {
             const jointName = this.jointNames[jointIndex]
             const config = this.jointConfigs.find(c => c.name === jointName)
             if (config) {
               // 将弧度转换为角度
-              const angleDeg = THREE.MathUtils.radToDeg(jointAngle)
+              const targetAngle = THREE.MathUtils.radToDeg(angleRad)
 
               this.animationState.timeline!.to(
                 config,
                 {
-                  currentAngle: angleDeg,
+                  currentAngle: targetAngle,
                   duration: frameDuration,
                   ease: 'none',
                   onUpdate: () => {
@@ -615,6 +745,16 @@ export class RobotArm {
     this.animationState.currentProgress = 0
     this.animationState.currentKeyFrameIndex = 0
     this.stopTrajectoryRecording()
+  }
+
+  /**
+   * 停止所有关节动画
+   */
+  stopAllJointAnimations(): void {
+    // 停止所有关节的GSAP动画
+    this.jointConfigs.forEach(config => {
+      gsap.killTweensOf(config)
+    })
   }
 
   // 设置动画进度
@@ -749,5 +889,49 @@ export class RobotArm {
   // 清除轨迹
   clearTrajectory(): void {
     this.trajectoryVisualizer?.clear()
+  }
+
+  // WebSocket相关方法
+  async initializeWebSocket(config: WebSocketConfig): Promise<void> {
+    try {
+      this.webSocketManager = new WebSocketManager(config)
+      await this.webSocketManager.initialize(this)
+
+      // 设置回调函数
+      this.webSocketManager.onConnectionStatus(connected => {
+        log.info(`WebSocket ${connected ? '已连接' : '已断开'}`)
+      })
+
+      this.webSocketManager.onRemoteCommand((command, _data) => {
+        log.info(`收到远程命令: ${command}`)
+      })
+
+      console.log('WebSocket初始化成功')
+    } catch (error) {
+      console.error('WebSocket初始化失败:', error)
+      log.error(`WebSocket初始化失败: ${error}`)
+      throw error
+    }
+  }
+
+  connectWebSocket(): Promise<void> {
+    if (!this.webSocketManager) {
+      throw new Error('WebSocket未初始化')
+    }
+    return this.webSocketManager.connect()
+  }
+
+  disconnectWebSocket(): void {
+    if (this.webSocketManager) {
+      this.webSocketManager.disconnect()
+    }
+  }
+
+  getWebSocketManager(): WebSocketManager | null {
+    return this.webSocketManager
+  }
+
+  isWebSocketConnected(): boolean {
+    return this.webSocketManager?.isConnected() || false
   }
 }

@@ -6,6 +6,7 @@ import { SceneConfig } from '@/config/Scene'
 import * as THREE from 'three'
 import type { BindingApi, ButtonApi } from '@tweakpane/core'
 import Log from './Log'
+import { WebSocketPanel } from './WebSocketPanel'
 
 const ACTION_BASE_PATH = import.meta.env.BASE_URL + 'actions/'
 
@@ -25,6 +26,7 @@ export class ControlPanel {
   private presetActionBinding: BindingApi | null = null
   private uploadButton: ButtonApi | null = null
   private resetUploadButton: ButtonApi | null = null
+  private webSocketPanel: WebSocketPanel | null = null
   private animationControls: {
     actionProgress: number
     currentFrameId: number
@@ -357,6 +359,9 @@ export class ControlPanel {
 
     // 添加轨迹可视化控制
     this.addTrajectoryControls()
+
+    // 添加WebSocket通信面板
+    this.addWebSocketPanel()
   }
 
   private resetToDefault(): void {
@@ -588,7 +593,7 @@ export class ControlPanel {
 
     const trajectoryFolder = this.pane.addFolder({
       title: '轨迹可视化',
-      expanded: true,
+      expanded: false,
     })
 
     const config = trajectoryVisualizer.getConfig()
@@ -644,5 +649,20 @@ export class ControlPanel {
       .on('change', ev => {
         trajectoryVisualizer.setConfig({ endPointColor: ev.value })
       })
+  }
+
+  // 添加WebSocket通信面板
+  private addWebSocketPanel(): void {
+    if (!this.robotArm) return
+
+    this.webSocketPanel = new WebSocketPanel(this.pane, this.robotArm, {
+      title: 'WebSocket 通信',
+      expanded: false,
+    })
+  }
+
+  // 获取WebSocket面板
+  getWebSocketPanel(): WebSocketPanel | null {
+    return this.webSocketPanel
   }
 }

@@ -1,0 +1,120 @@
+{
+  "meta": {
+    "version": "2.0",
+    "description": "WebSocket通信演示动作序列 - 适配新测试序列协议",
+    "created": "2025-10-22T10:00:00Z",
+    "updated": "2025-10-22T12:00:00Z",
+    "robot_type": "r1",
+    "sequence_type": "test_demo"
+  },
+  "frames": [
+    {
+      "id": 0,
+      "time": 0,
+      "joints": [0, 0, 0, 0, 0],
+      "cartesian": null,
+      "io": {
+        "digital_output_0": false
+      }
+    },
+    {
+      "id": 1,
+      "time": 2000,
+      "joints": [0, 1.571, 0, -2.092, -1.571],
+      "cartesian": null,
+      "io": {
+        "digital_output_0": false
+      }
+    },
+    {
+      "id": 2,
+      "time": 3000,
+      "joints": [0, 2.092, -0.789, -1.309, -1.571],
+      "cartesian": null,
+      "io": {
+        "digital_output_0": false
+      }
+    },
+    {
+      "id": 3,
+      "time": 5000,
+      "joints": [0, 2.092, -0.789, -1.309, -1.571],
+      "cartesian": null,
+      "io": {
+        "digital_output_0": false
+      }
+    },
+    {
+      "id": 4,
+      "time": 7000,
+      "joints": [0, 2.092, -0.523, -1.571, -1.571],
+      "cartesian": null,
+      "io": {
+        "digital_output_0": false
+      }
+    },
+    {
+      "id": 5,
+      "time": 9000,
+      "joints": [0, 2.092, -0.523, -1.571, -1.571],
+      "cartesian": null,
+      "io": {
+        "digital_output_0": true
+      }
+    },
+    {
+      "id": 6,
+      "time": 10000,
+      "joints": [0, 2.092, -0.789, -1.309, -1.571],
+      "cartesian": null,
+      "io": {
+        "digital_output_0": true
+      }
+    },
+    {
+      "id": 7,
+      "time": 11000,
+      "joints": [0, 2.092, -0.964, -1.134, -1.571],
+      "cartesian": null,
+      "io": {
+        "digital_output_0": true
+      }
+    },
+    {
+      "id": 8,
+      "time": 12000,
+      "joints": [3.141, 2.092, -0.964, -1.134, -1.571],
+      "cartesian": null,
+      "io": {
+        "digital_output_0": true
+      }
+    },
+    {
+      "id": 9,
+      "time": 14000,
+      "joints": [3.141, 2.092, -0.523, -1.571, -1.571],
+      "cartesian": null,
+      "io": {
+        "digital_output_0": true
+      }
+    },
+    {
+      "id": 10,
+      "time": 15000,
+      "joints": [3.141, 2.092, -0.523, -1.571, -1.571],
+      "cartesian": null,
+      "io": {
+        "digital_output_0": false
+      }
+    },
+    {
+      "id": 11,
+      "time": 16000,
+      "joints": [3.141, 2.092, -0.964, -1.134, -1.571],
+      "cartesian": null,
+      "io": {
+        "digital_output_0": false
+      }
+    }
+  ]
+}
